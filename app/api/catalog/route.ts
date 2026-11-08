@@ -1,0 +1,3 @@
+import {searchCatalog} from '../../../lib/catalog';
+import {catalogProviders,Provider} from '../../../lib/search';
+export async function GET(req:Request){const u=new URL(req.url);const provider=u.searchParams.get('provider') as Provider;const query=u.searchParams.get('q')||'';if(!catalogProviders.some(p=>p.id===provider)||!query.trim())return Response.json({error:'请选择检索源并输入片名'},{status:400});try{const films=await searchCatalog(provider,query);return Response.json({films,provider,resultKind:'catalog'});}catch(e){return Response.json({error:e instanceof Error?(/timeout|aborted/i.test(e.message)?'来源请求超时，其他来源仍可继续搜索':e.message):'检索源暂不可用',films:[]},{status:502});}}

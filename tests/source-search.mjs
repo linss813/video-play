@@ -1,0 +1,20 @@
+import ts from 'typescript';
+import {readFile,writeFile,mkdir} from 'node:fs/promises';
+import assert from 'node:assert/strict';
+await mkdir('.sites-runtime/orchestrator-tests',{recursive:true});
+for(const name of ['media','search','source-search']){let s=await readFile('lib/'+name+'.ts','utf8');s=s.replace(/from '\.\/(media|search)'/g,"from './$1.js'");await writeFile('.sites-runtime/orchestrator-tests/'+name+'.js',ts.transpileModule(s,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText);}
+const {searchSource,sourceQueries,aliasQueries}=await import('../.sites-runtime/orchestrator-tests/source-search.js');
+const s={id:'source',name:'example',url:'https://example.com',kind:'website',site:'age',enabled:true};
+const f={id:'1',title:'86 -不存在的地域-',aliases:[],year:'2021',type:'动漫',url:'https://example.com/detail/1',poster:'',sourceId:'source',sourceName:'example'};
+let calls=[];
+const run=async(_s,_a,q)=>{calls.push(q);return q==='86'?[f,f]:[];};
+let result=await searchSource(s,'86不存在的战区',run);assert.equal(result.films.length,1);assert.deepEqual(calls,['86不存在的战区','86 不存在的战区','86','不存在的战区']);assert.equal(result.cached,false);
+result=await searchSource(s,'86不存在的战区',run);assert(result.cached);assert.equal(calls.length,4);
+await searchSource({...s,url:'https://changed.example'},'86不存在的战区',run);assert.equal(calls.length,8);
+let invoked=0;const both=await Promise.all([searchSource({...s,id:'dedup'},'86',async()=>{invoked++;await new Promise(r=>setTimeout(r,15));return [f];}),searchSource({...s,id:'dedup'},'86',async()=>{invoked++;return [f];})]);assert.equal(invoked,1);assert.equal(both[0].films.length,1);
+await assert.rejects(()=>searchSource(s,'',run),/关键词/);
+const bad=await searchSource({...s,id:'wrong'},'86不存在的战区',async()=>[{...f,title:'重生86嫂子們的心事'}]);assert.equal(bad.films.length,0);
+const custom=await searchSource({...s,id:'custom',kind:'maccms'},'Spirited Away',async()=>[{...f,title:'千与千寻'}]);assert.equal(custom.films.length,1);
+assert(sourceQueries('Spirited Away').length<=4);assert.deepEqual(aliasQueries([{...f,resultKind:'catalog',title:'86 -不存在的战区-',aliases:['86―エイティシックス―','86 -不存在的地域-']}],'86不存在的战区'),['86―エイティシックス―','86 -不存在的地域-']);
+assert.equal(aliasQueries([{...f,resultKind:'catalog',title:'Interstellar (film)',aliases:[]}],'Interstellr')[0],'Interstellar');
+console.log('PASS: multi-query fallback, unrelated-result filtering, dedup, cache/config isolation, concurrent coalescing, catalog aliases');
